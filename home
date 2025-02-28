@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Brawl Browser</title>
+    <style>
+        canvas {
+            border: 2px solid black;
+            background: #2c3e50;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Configurações do jogo
+        canvas.width = 800;
+        canvas.height = 600;
+
+        // Carregar sprites
+        const playerSprite = new Image();
+        playerSprite.src = 'https://opengameart.org/sites/default/files/Green-Cap-Character-16x18.png';
+
+        const enemySprite = new Image();
+        enemySprite.src = 'https://opengameart.org/sites/default/files/Green-Cap-Character-16x18.png';
+
+        const bulletSprite = new Image();
+        bulletSprite.src = 'https://opengameart.org/sites/default/files/bullet_4.png';
+
+        // Classe do Jogador
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.speed = 5;
+                this.frameX = 0;
+                this.frameY = 0;
+                this.frameWidth = 16;
+                this.frameHeight = 18;
+                this.lastUpdate = Date.now();
+                this.frameInterval = 100;
+            }
+
+            draw() {
+                ctx.drawImage(
+                    playerSprite,
+                    this.frameX * this.frameWidth,
+                    this.frameY * this.frameHeight,
+                    this.frameWidth,
+                    this.frameHeight,
+                    this.x - this.frameWidth,
+                    this.y - this.frameHeight,
+                    this.frameWidth * 2,
+                    this.frameHeight * 2
+                );
+            }
+
+            update(direction) {
+                // Movimento
+                if (direction.includes('ArrowUp')) this.y -= this.speed;
+                if (direction.includes('ArrowDown')) this.y += this.speed;
+                if (direction.includes('ArrowLeft')) this.x -= this.speed;
+                if (direction.includes('ArrowRight')) this.x += this.speed;
+
+                // Animação
+                if (Date.now() - this.lastUpdate > this.frameInterval) {
+                    this.lastUpdate = Date.now();
+                    this.frameX = (this.frameX + 1) % 3;
+                }
+
+                // Direção da animação
+                if (direction.includes('ArrowUp')) this.frameY = 3;
+                else if (direction.includes('ArrowDown')) this.frameY = 0;
+                else if (direction.includes('ArrowLeft')) this.frameY = 1;
+                else if (direction.includes('ArrowRight')) this.frameY = 2;
+            }
+        }
+
+        // Classe da Bala do Jogador
+        class Bullet {
+            constructor(x, y, angle) {
+                this.x = x;
+                this.y = y;
+                this.speed = 7;
+                this.angle = angle;
+                this.radius = 5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.drawImage(bulletSprite, -this.radius, -this.radius, 15, 15);
+                ctx.restore();
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+            }
+        }
+
+        // Classe da Bala do Inimigo (Tiro Teleguiado)
+        class EnemyBullet {
+            constructor(x, y, targetX, targetY) {
+                this.x = x;
+                this.y = y;
+                this.speed = 3;
+                this.angle = Math.atan2(targetY - y, targetX - x);
+                this.radius = 5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.drawImage(bulletSprite, -this.radius, -this.radius, 15, 15);
+                ctx.restore();
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+            }
+        }
+
+        // Classe do Inimigo
+        class Enemy {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.health = 100;
+                this.size = 30;
+                this.bullets = [];
+                this.lastShotTime = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = 'green';
+                ctx.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+                // Desenhar as balas dos inimigos
+                this.bullets.forEach(bullet => bullet.draw());
+            }
+
+            takeDamage(damage) {
+                this.health -= damage;
+                if (this.health <= 0) {
+                    this.die();
+                }
+            }
+
+            die() {
+                // Inimigo morre e deve ser removido
+                enemies = enemies.filter(enemy => enemy !== this);
+            }
+
+            shoot(player) {
+                const currentTime = Date.now();
+                // Inimigo atira a cada 2 segundos
+                if (currentTime - this.lastShotTime > 500) {
+                    this.lastShotTime = currentTime;
+                    const bullet = new EnemyBullet(this.x, this.y, player.x, player.y);
+                    this.bullets.push(bullet);
+                }
+            }
+        }
+
+        // Variáveis do jogo
+        let player = new Player();
+        let bullets = [];
+        let keys = [];
+        let enemies = [];
+
+        // Controles
+        window.addEventListener('keydown', e => {
+            keys[e.key] = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        // Função para spawnar inimigos a cada 10 segundos
+        setInterval(() => {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            enemies.push(new Enemy(x, y));
+        }, 5000);
+
+        // Loop do jogo
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Direção do movimento
+            let direction = Object.keys(keys).filter(k => keys[k]);
+
+            // Atualizar jogador
+            player.update(direction);
+            player.draw();
+
+            // Atirar (Barra de Espaço)
+            if (keys[' ']) {
+                const angle = Math.atan2(
+                    canvas.height / 5 - player.y,
+                    canvas.width / 5 - player.x
+                );
+
+                bullets.push(new Bullet(
+                    player.x,
+                    player.y,
+                    angle + Math.PI
+                ));
+
+                keys[' '] = false;
+            }
+
+            // Atualizar e desenhar balas do jogador
+            bullets.forEach((bullet, index) => {
+                bullet.update();
+                bullet.draw();
+
+                // Remover balas fora da tela
+                if (bullet.x < 0 || bullet.x > canvas.width ||
+                    bullet.y < 0 || bullet.y > canvas.height) {
+                    bullets.splice(index, 1);
+                }
+
+                // Checar colisões com inimigos
+                enemies.forEach(enemy => {
+                    const dx = bullet.x - enemy.x;
+                    const dy = bullet.y - enemy.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < enemy.size / 2 + bullet.radius) {
+                        enemy.takeDamage(20); // A bala causa 20 de dano
+                        bullets.splice(index, 1); // Remove a bala após a colisão
+                    }
+                });
+            });
+
+            // Atualizar e desenhar inimigos
+            enemies.forEach(enemy => {
+                enemy.shoot(player);
+                enemy.draw();
+
+                // Atualizar balas dos inimigos
+                enemy.bullets.forEach((bullet, index) => {
+                    bullet.update();
+                    bullet.draw();
+
+                    // Checar colisões com o jogador
+                    const dx = bullet.x - player.x;
+                    const dy = bullet.y - player.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < player.frameWidth && distance < player.frameHeight) {
+                        player.health -= 50; // A bala inimiga causa 50 de dano
+                        enemy.bullets.splice(index, 1); // Remove a bala após a colisão
+                    }
+
+                    // Remover balas fora da tela
+                    if (bullet.x < 0 || bullet.x > canvas.width ||
+                        bullet.y < 0 || bullet.y > canvas.height) {
+                        enemy.bullets.splice(index, 1);
+                    }
+                });
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Iniciar o jogo
+        gameLoop();
+    </script>
+</body>
+
+</html>
